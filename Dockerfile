@@ -30,8 +30,9 @@ RUN npm install --only=production --prefer-offline --no-audit
 # Copy compiled files from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy database files if they exist
-COPY database ./database 2>/dev/null || true
+# Copy database files (optional - only if present)
+RUN mkdir -p database
+COPY database/ ./database/
 
 EXPOSE 9000
 
