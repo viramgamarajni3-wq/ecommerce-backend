@@ -2,19 +2,18 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy root lock, package.json AND turbo config
-COPY package*.json turbo.json ./
-# Copy workspace package.json
-COPY backend/medusa-server/package.json ./backend/medusa-server/
+# Copy package.json files
+COPY package*.json ./
 
-# Install root dependencies (caching layer)
+# Install dependencies (caching layer)
 RUN npm install --prefer-offline --no-audit
 
-# Copy source
-COPY backend/medusa-server ./backend/medusa-server
+# Copy source code
+COPY src ./src
+COPY tsconfig.json ./
 
-# Build app using workspace logic
-RUN npm run build --workspace=medusa-server
+# Build app
+RUN npm run build
 
 # Production stage
 FROM node:20-alpine AS runner
@@ -22,16 +21,23 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install only production dependencies
+# Copy package.json
 COPY package*.json ./
-COPY backend/medusa-server/package.json ./backend/medusa-server/
+
+# Install only production dependencies
 RUN npm install --only=production --prefer-offline --no-audit
 
-# Copy compiled files
-COPY --from=builder /app/backend/medusa-server/dist ./backend/medusa-server/dist
-COPY --from=builder /app/backend/medusa-server/database ./backend/medusa-server/database
+# Copy compiled files from builder
+COPY --from=builder /app/dist ./dist
+
+# Copy database files if they exist
+COPY database ./database 2>/dev/null || true
 
 EXPOSE 9000
 
-# Start command (using workspace script)
-CMD ["npm", "run", "start", "--workspace=medusa-server"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:9000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})" || exit 1
+
+# Start the application
+CMD ["npm", "start"]
